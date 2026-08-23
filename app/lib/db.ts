@@ -26,7 +26,8 @@ function migrate(db: Database.Database) {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       home_team TEXT NOT NULL,
       away_team TEXT NOT NULL,
-      kickoff_at TEXT NOT NULL
+      kickoff_at TEXT NOT NULL,
+      eid TEXT
     );
 
     CREATE TABLE IF NOT EXISTS bets (
@@ -59,13 +60,16 @@ function seed(db: Database.Database) {
 
   const matchCount = (db.prepare('SELECT COUNT(*) AS n FROM matches').get() as { n: number }).n
   if (matchCount === 0) {
-    // Seeded upcoming fixtures — kickoff times a few days out so they're plausibly "upcoming".
-    const insertMatch = db.prepare('INSERT INTO matches (home_team, away_team, kickoff_at) VALUES (?, ?, ?)')
+    // Seeded fixtures carrying real livescore eids (from a `livescore-pp-cli sync`
+    // of the current slate) so the bet page can look up live status/score.
+    const insertMatch = db.prepare('INSERT INTO matches (home_team, away_team, kickoff_at, eid) VALUES (?, ?, ?, ?)')
     const days = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString()
-    insertMatch.run('Arsenal', 'Chelsea', days(2))
-    insertMatch.run('Liverpool', 'Man City', days(2))
-    insertMatch.run('Enyimba', 'Rangers', days(3))
-    insertMatch.run('Barcelona', 'Real Madrid', days(4))
-    insertMatch.run('Bayern Munich', 'Dortmund', days(5))
+    // eid values: real upcoming Premier League / big-club fixtures where available;
+    // null for placeholder rows, which the live panel reports as "no external id".
+    insertMatch.run('Brighton', 'Aston Villa', '2026-08-23T16:00:00Z', '1793529')
+    insertMatch.run('Manchester City', 'AFC Bournemouth', '2026-08-23T16:00:00Z', '1793531')
+    insertMatch.run('Newcastle United', 'Liverpool', '2026-08-23T18:30:00Z', '1793532')
+    insertMatch.run('West Bromwich Albion', 'Burnley', days(1), '1802348')
+    insertMatch.run('Barcelona', 'Real Madrid', days(4), null)
   }
 }
