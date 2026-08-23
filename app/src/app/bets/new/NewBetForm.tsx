@@ -1,0 +1,123 @@
+'use client'
+
+import { useRouter } from 'next/navigation'
+import { useState } from 'react'
+
+type Match = { id: number; home_team: string; away_team: string; kickoff_at: string }
+type Member = { id: number; name: string }
+
+export default function NewBetForm({ matches, members }: { matches: Match[]; members: Member[] }) {
+  const router = useRouter()
+  const [matchId, setMatchId] = useState('')
+  const [createdBy, setCreatedBy] = useState(members[0]?.id.toString() ?? '')
+  const [stake, setStake] = useState('')
+  const [prediction, setPrediction] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+
+    // Client-side validation mirroring the API's rules
+    if (!matchId) return setError('Please pick a match.')
+    const stakeNum = Number(stake)
+    if (!Number.isInteger(stakeNum) || stakeNum <= 0) {
+      return setError('Stake must be a positive whole number of points.')
+    }
+    if (prediction !== 'win' && prediction !== 'lose' && prediction !== 'draw') {
+      return setError('Please select a prediction (win / lose / draw).')
+    }
+
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/bets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          matchId: Number(matchId),
+          createdBy: Number(createdBy),
+          stake: stakeNum,
+          prediction,
+        }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: 'Request failed' }))
+        setError(data.error ?? 'Something went wrong')
+        setSubmitting(false)
+        return
+      }
+      const data = (await res.json()) as { id: number }
+      router.push(`/bets/${data.id}`)
+    } catch {
+      setError('Network error — please try again.')
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem', maxWidth: 480 }}>
+      <label>
+        Acting as
+        <select value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} required>
+          {members.map((m) => (
+            <option key={m.id} value={m.id}>{m.name}</option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Match
+        <select value={matchId} onChange={(e) => setMatchId(e.target.value)} required>
+          <option value="">— pick an upcoming match —</option>
+          {matches.map((m) => (
+            <option key={m.id} value={m.id}>
+              {m.home_team} vs {m.away_team} — {new Date(m.kickoff_at).toLocaleString()}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <label>
+        Stake (points)
+        <input
+          type="number"
+          min="1"
+          step="1"
+          value={stake}
+          onChange={(e) => setStake(e.target.value)}
+          placeholder="e.g. 100"
+          required
+        />
+      </label>
+
+      <fieldset>
+        <legend>Prediction</legend>
+        {(['win', 'lose', 'draw'] as const).map((p) => (
+          <label key={p} style={{ marginRight: '1rem' }}>
+            <input
+              type="radio"
+              name="prediction"
+              value={p}
+              checked={prediction === p}
+              onChange={() => setPrediction(p)}
+              required
+            />
+            {' '}
+            {p[0].toUpperCase() + p.slice(1)}
+          </label>
+        ))}
+      </fieldset>
+
+      {error && (
+        <p role="alert" style={{ color: 'red' }}>
+          {error}
+        </p>
+      )}
+
+      <button type="submit" disabled={submitting}>
+        {submitting ? 'Opening bet…' : 'Open bet'}
+      </button>
+    </form>
+  )
+}
