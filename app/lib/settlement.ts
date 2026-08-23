@@ -1,5 +1,6 @@
 import { getDb } from '@/lib/db'
 import { fetchMatchLive } from '@/lib/livescore'
+import { confirmWithSecondSource } from '@/lib/second-source'
 
 /**
  * S6 settlement engine.
@@ -143,29 +144,66 @@ export function refundBet(betId: number, reason: string): SettleResult {
  * Bets already refunded (S8) are excluded by the settlements NOT EXISTS guard
  * and the status filter — the two end states are mutually exclusive (AC3).
  */
-export async function settlePendingBets(): Promise<SettleResult[]> {
+export async function settlePendingBets(): Promise<{ settled: SettleResult[]; held: number[] }> {
   const db = getDb()
   const now = new Date().toISOString()
 
   const candidates = db
     .prepare(
-      `SELECT b.id, b.stake, m.eid, m.home_team
+      `SELECT b.id, b.stake, m.eid, m.home_team, m.api_fixture_id
        FROM bets b
        JOIN matches m ON m.id = b.match_id
        WHERE b.status = 'open'
          AND m.kickoff_at <= ?
          AND m.eid IS NOT NULL
-         AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.bet_id = b.id)`
+         AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.bet_id = b.id)
+         AND NOT EXISTS (SELECT 1 FROM pending_confirmations p WHERE p.bet_id = b.id)`
     )
-    .all(now) as { id: number; stake: number; eid: string; home_team: string }[]
+    .all(now) as { id: number; stake: number; eid: string; home_team: string; api_fixture_id: number | null }[]
 
   const settled: SettleResult[] = []
+  const held: number[] = []
   for (const c of candidates) {
     const live = await fetchMatchLive(c.eid, c.home_team)
     if (!live || live.statusClass !== 'finished' || live.homeScore == null || live.awayScore == null) {
       continue // still in progress, or data unavailable — try again next scan
     }
+
+    // S9: second-source confirmation before paying out.
+    const primaryOutcome = outcomeOf(live.homeScore, live.awayScore)
+    const confirmation = await confirmWithSecondSource(
+      c.eid,
+      c.api_fixture_id,
+      primaryOutcome,
+      live.homeScore,
+      live.awayScore
+    )
+    if (confirmation.state !== 'agree') {
+      holdBet(c.id, confirmation.state === 'disagree'
+        ? `sources disagree: primary says ${confirmation.primaryOutcome}, second source says ${confirmation.secondaryOutcome}`
+        : `second source unavailable (${confirmation.reason})`)
+      held.push(c.id)
+      continue // no payout — bet held for review
+    }
+
     settled.push(settleBet(c.id, { homeScore: live.homeScore, awayScore: live.awayScore }))
   }
-  return settled
+  return { settled, held }
+}
+
+function outcomeOf(h: number, a: number): 'win' | 'lose' | 'draw' {
+  return h === a ? 'draw' : h > a ? 'win' : 'lose'
+}
+
+/**
+ * S9: hold a bet in "pending confirmation" — no payout, no settlement row.
+ * Resolving a hold (manual override or delayed retry) is explicitly out of
+ * scope for this slice; the hold is sticky until something clears it.
+ */
+function holdBet(betId: number, reason: string): void {
+  const db = getDb()
+  db.prepare(
+    `INSERT INTO pending_confirmations (bet_id, reason) VALUES (?, ?)
+     ON CONFLICT(bet_id) DO UPDATE SET reason = excluded.reason`
+  ).run(betId, reason)
 }

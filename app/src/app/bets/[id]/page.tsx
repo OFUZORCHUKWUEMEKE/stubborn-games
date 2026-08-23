@@ -86,6 +86,9 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
   }[]
   const joinedMemberIds = participants.map((p) => p.member_id)
   const status = effectiveStatus(bet)
+  const pending = db
+    .prepare('SELECT reason, created_at FROM pending_confirmations WHERE bet_id = ?')
+    .get(betId) as { reason: string; created_at: string } | undefined
 
   const outcomeText = (() => {
     if (!settlement) return ''
@@ -114,10 +117,11 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       <dl>
         <dt>Status</dt>
         <dd style={status !== 'open' ? { fontWeight: 'bold' } : undefined}>
-          {status === 'locked' && 'Locked — no new joins after kickoff'}
-          {status === 'settled' && 'Settled'}
-          {status === 'refunded' && 'Refunded'}
-          {status === 'open' && 'Open'}
+          {pending && 'Pending confirmation'}
+          {!pending && status === 'locked' && 'Locked — no new joins after kickoff'}
+          {!pending && status === 'settled' && 'Settled'}
+          {!pending && status === 'refunded' && 'Refunded'}
+          {!pending && status === 'open' && 'Open'}
         </dd>
 
         <dt>Stake</dt>
@@ -126,6 +130,23 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         <dt>Opened by</dt>
         <dd>{bet.opener_name}</dd>
       </dl>
+
+      {pending && (
+        <section
+          aria-label="Pending confirmation"
+          style={{ border: '1px solid #d80', background: '#fff3e0', padding: '1rem', marginTop: '1rem' }}
+        >
+          <h2>Pending confirmation</h2>
+          <p>
+            The data sources disagree (or the second source is unavailable), so this bet has{' '}
+            <strong>not been settled yet</strong> — no points have moved. A hold like this is exactly how the app
+            avoids paying out on a wrong score.
+          </p>
+          <p style={{ color: '#666' }}>
+            <small>Reason: {pending.reason}</small>
+          </p>
+        </section>
+      )}
 
       {settlement && settlement.outcome !== 'refund' && (
         <section aria-label="Settlement" style={{ border: '1px solid #2c2', padding: '1rem', marginTop: '1rem' }}>

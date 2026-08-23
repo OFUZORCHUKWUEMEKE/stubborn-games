@@ -28,7 +28,8 @@ function migrate(db: Database.Database) {
       home_team TEXT NOT NULL,
       away_team TEXT NOT NULL,
       kickoff_at TEXT NOT NULL,
-      eid TEXT
+      eid TEXT,
+      api_fixture_id INTEGER
     );
 
     CREATE TABLE IF NOT EXISTS bets (
@@ -63,6 +64,12 @@ function migrate(db: Database.Database) {
       member_id INTEGER REFERENCES squad_members(id),  -- NULL for system/event messages
       kind TEXT NOT NULL DEFAULT 'user' CHECK (kind IN ('user', 'event')),
       text TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pending_confirmations (
+      bet_id INTEGER PRIMARY KEY REFERENCES bets(id),
+      reason TEXT NOT NULL,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
