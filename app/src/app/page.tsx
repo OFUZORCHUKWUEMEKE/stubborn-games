@@ -6,7 +6,7 @@ export default function Home() {
       <h1>Squad Picks</h1>
       <p>Private betting app for the squad — points MVP.</p>
       <p>
-        <Link href="/bets/new">Open a bet →</Link>
+        <Link href="/bets/new">Open a bet →</Link> · <Link href="/leaderboard">Leaderboard</Link>
       </p>
     </main>
   )
