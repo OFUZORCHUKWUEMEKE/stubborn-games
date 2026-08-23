@@ -4,6 +4,7 @@ import { getDb } from '@/lib/db'
 import { effectiveStatus } from '@/lib/bets'
 import LiveScore from './LiveScore'
 import JoinBetForm from './JoinBetForm'
+import BetChat from './BetChat'
 
 export const dynamic = 'force-dynamic'
 
@@ -39,6 +40,15 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
     await settlePendingBets()
   } catch {
     // settlement must never take the page down
+  }
+
+  // S5: opportunistically post new match events into chat (same trigger
+  // pattern as the settlement scan — no separate watcher process needed).
+  try {
+    const { postMatchEvents } = await import('@/lib/chat-events')
+    postMatchEvents(betId)
+  } catch {
+    // event posting must never take the page down
   }
 
   const bet = db
@@ -191,6 +201,9 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       {status === 'open' && (
         <JoinBetForm betId={bet.id} stake={bet.stake} members={members} joinedMemberIds={joinedMemberIds} />
       )}
+
+      {/* S5: bet chat — user messages + auto-posted match events */}
+      <BetChat betId={bet.id} members={members.map(({ id, name }) => ({ id, name }))} />
 
       <p>
         <Link href="/bets/new">Open a bet →</Link> · <Link href="/leaderboard">Leaderboard</Link>
