@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db'
+import LiveScore from './LiveScore'
 
 export const dynamic = 'force-dynamic'
 
@@ -42,6 +43,9 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         {bet.home_team} vs {bet.away_team}
       </h1>
       <p>Kickoff: {new Date(bet.kickoff_at).toLocaleString()}</p>
+
+      {/* S2: live status/score from livescore-pp-cli (read-only; settlement is #6) */}
+      <LiveScore betId={bet.id} />
 
       <dl>
         <dt>Status</dt>
