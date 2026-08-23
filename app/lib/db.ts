@@ -9,6 +9,7 @@ export function getDb(): Database.Database {
   if (db) return db
   db = new Database(DB_PATH)
   db.pragma('journal_mode = WAL')
+  db.pragma('busy_timeout = 5000')
   migrate(db)
   seed(db)
   return db
@@ -45,6 +46,15 @@ function migrate(db: Database.Database) {
       bet_id INTEGER NOT NULL REFERENCES bets(id),
       member_id INTEGER NOT NULL REFERENCES squad_members(id),
       prediction TEXT NOT NULL CHECK (prediction IN ('win', 'lose', 'draw'))
+    );
+
+    CREATE TABLE IF NOT EXISTS settlements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bet_id INTEGER NOT NULL UNIQUE REFERENCES bets(id),
+      outcome TEXT NOT NULL,               -- real result: 'win' | 'lose' | 'draw' | 'refund'
+      home_score INTEGER,
+      away_score INTEGER,
+      settled_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
 }
