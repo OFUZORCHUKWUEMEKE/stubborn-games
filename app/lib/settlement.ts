@@ -88,8 +88,60 @@ export function settleBet(betId: number, live: { homeScore: number; awayScore: n
 }
 
 /**
+ * S8: mark a bet's match abandoned/postponed/overturned and refund everyone.
+ *
+ * Balance-neutral by design — stakes are debited only at settlement (S6), so
+ * a refund before settlement means nobody's balance ever moved. If a bet was
+ * already settled, refunding would require clawing back paid points, so it is
+ * rejected: settled and refunded are mutually exclusive terminal states (AC3).
+ *
+ * Manual trigger per the issue's implementation note — livescore-pp-cli has
+ * no dedicated abandoned/postponed status field.
+ */
+export function refundBet(betId: number, reason: string): SettleResult {
+  const db = getDb()
+
+  const existing = db.prepare('SELECT id FROM settlements WHERE bet_id = ?').get(betId)
+  if (existing) throw new Error(`bet ${betId} already has a settlement record`)
+
+  const bet = db
+    .prepare('SELECT id, stake, status FROM bets WHERE id = ?')
+    .get(betId) as { id: number; stake: number; status: string } | undefined
+  if (!bet) throw new Error(`bet ${betId} not found`)
+  if (bet.status === 'settled' || bet.status === 'refunded') {
+    throw new Error(`bet ${betId} is already ${bet.status} — cannot refund a closed bet`)
+  }
+
+  const participants = db
+    .prepare('SELECT member_id FROM bet_participants WHERE bet_id = ? ORDER BY id')
+    .all(betId) as { member_id: number }[]
+  if (participants.length === 0) throw new Error(`bet ${betId} has no participants`)
+
+  const applyRefund = db.transaction(() => {
+    // Stakes were never debited (debit happens at settlement), so refunding is
+    // balance-neutral: record the outcome and flip status. No partial refund,
+    // per the PRD ("no partial settlement on an ambiguous result").
+    db.prepare('UPDATE bets SET status = ? WHERE id = ?').run('refunded', betId)
+    db.prepare(
+      'INSERT INTO settlements (bet_id, outcome, home_score, away_score) VALUES (?, ?, ?, ?)'
+    ).run(betId, 'refund', null, null)
+  })
+  applyRefund()
+
+  return {
+    betId,
+    outcome: 'refund',
+    homeScore: 0,
+    awayScore: 0,
+    payouts: participants.map((p) => ({ memberId: p.member_id, amount: 0 })),
+  }
+}
+
+/**
  * Scan: find locked (kickoff passed, not yet settled) bets whose matches are
  * finished per the live source, and settle each. Returns what it settled.
+ * Bets already refunded (S8) are excluded by the settlements NOT EXISTS guard
+ * and the status filter — the two end states are mutually exclusive (AC3).
  */
 export async function settlePendingBets(): Promise<SettleResult[]> {
   const db = getDb()
