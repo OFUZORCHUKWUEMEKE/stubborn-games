@@ -193,7 +193,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       )}
 
       <p>
-        <Link href="/bets/new">Open another bet</Link>
+        <Link href="/bets/new">Open a bet →</Link> · <Link href="/leaderboard">Leaderboard</Link>
       </p>
     </main>
   )
