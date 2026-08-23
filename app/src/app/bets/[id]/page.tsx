@@ -117,7 +117,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         <dd>{bet.opener_name}</dd>
       </dl>
 
-      {settlement && (
+      {settlement && settlement.outcome !== 'refund' && (
         <section aria-label="Settlement" style={{ border: '1px solid #2c2', padding: '1rem', marginTop: '1rem' }}>
           <h2>Settled</h2>
           <p>
@@ -125,6 +125,19 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
           </p>
           <p>
             <strong>Winners split the pot.</strong> See each member&apos;s outcome below.
+          </p>
+        </section>
+      )}
+
+      {settlement && settlement.outcome === 'refund' && (
+        <section
+          aria-label="Refund"
+          style={{ border: '1px solid #c82', background: '#fff8e6', padding: '1rem', marginTop: '1rem' }}
+        >
+          <h2>Refunded</h2>
+          <p>
+            This match was abandoned/postponed or had no correct picks. Every participant&apos;s stake was
+            returned in full — nobody gains, nobody loses (no partial settlement on an ambiguous result).
           </p>
         </section>
       )}
