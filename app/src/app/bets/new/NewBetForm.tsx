@@ -15,6 +15,19 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
+  const selectedMatch = matches.find((m) => m.id.toString() === matchId)
+
+  // 'win'/'lose'/'draw' are stored relative to the home team (see
+  // lib/settlement.ts), but that's invisible to a user just seeing generic
+  // Win/Lose/Draw radios — two people can pick "Win" meaning two different
+  // teams. Label options against the actual match instead.
+  function predictionLabel(p: 'win' | 'lose' | 'draw'): string {
+    if (!selectedMatch) return p[0].toUpperCase() + p.slice(1)
+    if (p === 'win') return `${selectedMatch.home_team} to win`
+    if (p === 'lose') return `${selectedMatch.away_team} to win`
+    return 'Draw'
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
@@ -92,7 +105,8 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
       </label>
 
       <fieldset>
-        <legend>Prediction</legend>
+        <legend>Your prediction</legend>
+        {!selectedMatch && <p style={{ color: '#888', margin: '0 0 0.5rem' }}>Pick a match first to see your options.</p>}
         {(['win', 'lose', 'draw'] as const).map((p) => (
           <label key={p} style={{ marginRight: '1rem' }}>
             <input
@@ -104,7 +118,7 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
               required
             />
             {' '}
-            {p[0].toUpperCase() + p.slice(1)}
+            {predictionLabel(p)}
           </label>
         ))}
       </fieldset>
