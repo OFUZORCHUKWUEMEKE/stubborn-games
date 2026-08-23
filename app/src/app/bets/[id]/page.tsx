@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db'
+import { effectiveStatus } from '@/lib/bets'
 import LiveScore from './LiveScore'
 import JoinBetForm from './JoinBetForm'
 
@@ -54,6 +55,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
     points: number
   }[]
   const joinedMemberIds = participants.map((p) => p.member_id)
+  const status = effectiveStatus(bet)
 
   return (
     <main style={{ padding: '2rem' }}>
@@ -67,7 +69,9 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
       <dl>
         <dt>Status</dt>
-        <dd>{bet.status}</dd>
+        <dd style={status === 'locked' ? { fontWeight: 'bold' } : undefined}>
+          {status === 'locked' ? 'Locked — no new joins after kickoff' : status}
+        </dd>
 
         <dt>Stake</dt>
         <dd>{bet.stake} points</dd>
@@ -96,7 +100,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         </tbody>
       </table>
 
-      {bet.status === 'open' && (
+      {status === 'open' && (
         <JoinBetForm betId={bet.id} stake={bet.stake} members={members} joinedMemberIds={joinedMemberIds} />
       )}
 

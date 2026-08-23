@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { effectiveStatus, getBetWithKickoff } from '@/lib/bets'
 
 type JoinBody = {
   memberId?: unknown
@@ -30,10 +31,13 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const db = getDb()
 
-  const bet = db.prepare('SELECT id, status, stake FROM bets WHERE id = ?').get(betId) as
-    | { id: number; status: string; stake: number }
-    | undefined
-  if (!bet) return NextResponse.json({ error: 'Bet not found' }, { status: 404 })
+  const betCore = getBetWithKickoff(betId)
+  if (!betCore) return NextResponse.json({ error: 'Bet not found' }, { status: 404 })
+
+  // S4: no joining at or after kickoff
+  if (effectiveStatus(betCore) === 'locked') {
+    return NextResponse.json({ error: 'This bet is locked — kickoff has passed' }, { status: 423 })
+  }
 
   const member = db.prepare('SELECT id, points FROM squad_members WHERE id = ?').get(memberId) as
     | { id: number; points: number }
@@ -47,9 +51,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'You have already joined this bet' }, { status: 409 })
   }
 
-  if (member.points < bet.stake) {
+  if (member.points < betCore.stake) {
     return NextResponse.json(
-      { error: `Insufficient points: stake is ${bet.stake} but you have ${member.points}` },
+      { error: `Insufficient points: stake is ${betCore.stake} but you have ${member.points}` },
       { status: 400 }
     )
   }
