@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { getDb } from '@/lib/db'
 import LiveScore from './LiveScore'
+import JoinBetForm from './JoinBetForm'
 
 export const dynamic = 'force-dynamic'
 
@@ -37,6 +38,23 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
   if (!bet) notFound()
 
+  const participants = db
+    .prepare(
+      `SELECT bp.member_id, bp.prediction, sm.name
+       FROM bet_participants bp
+       JOIN squad_members sm ON sm.id = bp.member_id
+       WHERE bp.bet_id = ?
+       ORDER BY bp.id`
+    )
+    .all(betId) as { member_id: number; prediction: string; name: string }[]
+
+  const members = db.prepare('SELECT id, name, points FROM squad_members ORDER BY id').all() as {
+    id: number
+    name: string
+    points: number
+  }[]
+  const joinedMemberIds = participants.map((p) => p.member_id)
+
   return (
     <main style={{ padding: '2rem' }}>
       <h1>
@@ -56,10 +74,31 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
         <dt>Opened by</dt>
         <dd>{bet.opener_name}</dd>
-
-        <dt>Prediction</dt>
-        <dd>{bet.prediction[0].toUpperCase() + bet.prediction.slice(1)}</dd>
       </dl>
+
+      <h2>Participants</h2>
+      <table>
+        <thead>
+          <tr>
+            <th align="left">Member</th>
+            <th align="left">Prediction</th>
+            <th align="left">Stake</th>
+          </tr>
+        </thead>
+        <tbody>
+          {participants.map((p) => (
+            <tr key={p.member_id}>
+              <td>{p.name}</td>
+              <td>{p.prediction[0].toUpperCase() + p.prediction.slice(1)}</td>
+              <td>{bet.stake} points</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {bet.status === 'open' && (
+        <JoinBetForm betId={bet.id} stake={bet.stake} members={members} joinedMemberIds={joinedMemberIds} />
+      )}
 
       <p>
         <Link href="/bets/new">Open another bet</Link>
