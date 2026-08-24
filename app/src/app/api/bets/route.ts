@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { generateRoomToken } from '@/lib/rooms'
 
 export async function POST(request: Request) {
   let body: unknown
@@ -38,15 +39,19 @@ export async function POST(request: Request) {
   const member = db.prepare('SELECT id FROM squad_members WHERE id = ?').get(createdBy)
   if (!member) return NextResponse.json({ error: 'Squad member not found' }, { status: 400 })
 
+  const roomToken = generateRoomToken()
   const insertBet = db.prepare(
-    'INSERT INTO bets (match_id, created_by, stake, prediction) VALUES (?, ?, ?, ?)'
+    'INSERT INTO bets (match_id, created_by, stake, prediction, room_token) VALUES (?, ?, ?, ?, ?)'
   )
-  const result = insertBet.run(matchId, createdBy, stakeNum, prediction)
+  const result = insertBet.run(matchId, createdBy, stakeNum, prediction, roomToken)
 
   db.prepare(
     'INSERT INTO bet_participants (bet_id, member_id, prediction) VALUES (?, ?, ?)'
   ).run(result.lastInsertRowid, createdBy, prediction)
 
   const betId = result.lastInsertRowid as number
-  return NextResponse.json({ id: betId }, { status: 201, headers: { Location: `/bets/${betId}` } })
+  return NextResponse.json(
+    { id: betId, roomToken },
+    { status: 201, headers: { Location: `/bets/${betId}` } }
+  )
 }

@@ -15,7 +15,7 @@ export function getDb(): Database.Database {
   return db
 }
 
-function migrate(db: Database.Database) {
+export function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS squad_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -39,7 +39,8 @@ function migrate(db: Database.Database) {
       created_by INTEGER NOT NULL REFERENCES squad_members(id),
       stake INTEGER NOT NULL,
       prediction TEXT NOT NULL CHECK (prediction IN ('win', 'lose', 'draw')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      room_token TEXT
     );
 
     CREATE TABLE IF NOT EXISTS bet_participants (
@@ -73,6 +74,17 @@ function migrate(db: Database.Database) {
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
   `)
+
+  // Defensive: a local dev db created before room_token existed won't have
+  // it (CREATE TABLE IF NOT EXISTS is a no-op on an existing table). Add it
+  // if missing, then ensure the uniqueness index exists either way — kept as
+  // a separate index rather than a column-level UNIQUE constraint since
+  // SQLite's ALTER TABLE ADD COLUMN can't express that directly.
+  const betsColumns = db.prepare('PRAGMA table_info(bets)').all() as { name: string }[]
+  if (!betsColumns.some((c) => c.name === 'room_token')) {
+    db.exec('ALTER TABLE bets ADD COLUMN room_token TEXT')
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_bets_room_token ON bets(room_token)')
 }
 
 function seed(db: Database.Database) {

@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { headers } from 'next/headers'
 import { getDb } from '@/lib/db'
 import { effectiveStatus } from '@/lib/bets'
 import LiveScore from './LiveScore'
@@ -18,6 +19,7 @@ type BetRow = {
   away_team: string
   kickoff_at: string
   opener_name: string
+  room_token: string | null
 }
 
 type Settlement = {
@@ -53,7 +55,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
   const bet = db
     .prepare(
-      `SELECT b.id, b.status, b.stake, b.prediction, b.created_at,
+      `SELECT b.id, b.status, b.stake, b.prediction, b.created_at, b.room_token,
               m.home_team, m.away_team, m.kickoff_at,
               sm.name AS opener_name
        FROM bets b
@@ -64,6 +66,16 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
     .get(betId) as BetRow | undefined
 
   if (!bet) notFound()
+
+  // Absolute so it's actually shareable when pasted outside the app (a group
+  // chat, etc.) — a bet created before room_token existed (pre-migration
+  // local db) simply has no link to show.
+  let roomLink: string | null = null
+  if (bet.room_token) {
+    const h = await headers()
+    const proto = h.get('x-forwarded-proto') ?? 'http'
+    roomLink = `${proto}://${h.get('host')}/rooms/${bet.room_token}`
+  }
 
   const participants = db
     .prepare(
@@ -110,6 +122,13 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         {bet.home_team} vs {bet.away_team}
       </h1>
       <p>Kickoff: {new Date(bet.kickoff_at).toLocaleString()}</p>
+
+      {/* S1 (v2 rooms): shareable room link — send this into the group chat */}
+      {roomLink && (
+        <p style={{ background: '#f0f4f8', padding: '0.6rem 0.9rem', borderRadius: 4 }}>
+          Share this room: <code style={{ userSelect: 'all' }}>{roomLink}</code>
+        </p>
+      )}
 
       {/* S2: live status/score from livescore-pp-cli (read-only display) */}
       <LiveScore betId={bet.id} />
