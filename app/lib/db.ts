@@ -19,7 +19,7 @@ export function migrate(db: Database.Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS squad_members (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
       points INTEGER NOT NULL DEFAULT 1000
     );
 
@@ -85,6 +85,36 @@ export function migrate(db: Database.Database) {
     db.exec('ALTER TABLE bets ADD COLUMN room_token TEXT')
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_bets_room_token ON bets(room_token)')
+
+  // Defensive: a local dev db created before ad-hoc per-room identity (v2
+  // rooms) still has squad_members.name UNIQUE, which SQLite's ALTER TABLE
+  // can't drop directly — names are no longer globally unique once
+  // different rooms can each have their own "Dele". Rebuild the table only
+  // if the old constraint is actually still present (checked via the
+  // auto-index SQLite creates for an inline UNIQUE column), so this is a
+  // no-op on a fresh install or an already-upgraded db.
+  if (squadMembersNameIsUnique(db)) {
+    db.exec(`
+      CREATE TABLE squad_members_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        points INTEGER NOT NULL DEFAULT 1000
+      );
+      INSERT INTO squad_members_new (id, name, points) SELECT id, name, points FROM squad_members;
+      DROP TABLE squad_members;
+      ALTER TABLE squad_members_new RENAME TO squad_members;
+    `)
+  }
+}
+
+function squadMembersNameIsUnique(db: Database.Database): boolean {
+  const indexes = db.prepare("PRAGMA index_list('squad_members')").all() as { name: string; unique: number }[]
+  for (const idx of indexes) {
+    if (!idx.unique) continue
+    const cols = db.prepare(`PRAGMA index_info('${idx.name}')`).all() as { name: string }[]
+    if (cols.length === 1 && cols[0].name === 'name') return true
+  }
+  return false
 }
 
 function seed(db: Database.Database) {

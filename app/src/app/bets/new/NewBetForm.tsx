@@ -4,12 +4,11 @@ import { useRouter } from 'next/navigation'
 import { useState } from 'react'
 
 type Match = { id: number; home_team: string; away_team: string; kickoff_at: string }
-type Member = { id: number; name: string }
 
-export default function NewBetForm({ matches, members }: { matches: Match[]; members: Member[] }) {
+export default function NewBetForm({ matches }: { matches: Match[] }) {
   const router = useRouter()
   const [matchId, setMatchId] = useState('')
-  const [createdBy, setCreatedBy] = useState(members[0]?.id.toString() ?? '')
+  const [name, setName] = useState('')
   const [stake, setStake] = useState('')
   const [prediction, setPrediction] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -33,6 +32,7 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
     setError(null)
 
     // Client-side validation mirroring the API's rules
+    if (!name.trim()) return setError('Enter your name to open a bet.')
     if (!matchId) return setError('Please pick a match.')
     const stakeNum = Number(stake)
     if (!Number.isInteger(stakeNum) || stakeNum <= 0) {
@@ -49,7 +49,7 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           matchId: Number(matchId),
-          createdBy: Number(createdBy),
+          name,
           stake: stakeNum,
           prediction,
         }),
@@ -71,12 +71,15 @@ export default function NewBetForm({ matches, members }: { matches: Match[]; mem
   return (
     <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem', maxWidth: 480 }}>
       <label>
-        Acting as
-        <select value={createdBy} onChange={(e) => setCreatedBy(e.target.value)} required>
-          {members.map((m) => (
-            <option key={m.id} value={m.id}>{m.name}</option>
-          ))}
-        </select>
+        Your name
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Marco"
+          maxLength={60}
+          required
+        />
       </label>
 
       <label>
