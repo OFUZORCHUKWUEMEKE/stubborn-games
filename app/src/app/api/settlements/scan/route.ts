@@ -10,8 +10,8 @@ export const dynamic = 'force-dynamic'
  */
 export async function POST() {
   try {
-    const settled = await settlePendingBets()
-    return NextResponse.json({ settled })
+    const result = await settlePendingBets()
+    return NextResponse.json(result)
   } catch (e) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'settlement failed' },
