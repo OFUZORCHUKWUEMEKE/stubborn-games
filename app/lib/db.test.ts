@@ -56,6 +56,37 @@ describe('migrate', () => {
     ).not.toThrow()
   })
 
+  it('drops the UNIQUE constraint on squad_members.name (ad-hoc names can repeat across rooms)', () => {
+    const db = new Database(':memory:')
+    // Simulate a pre-existing local db from before names could repeat.
+    db.exec(`
+      CREATE TABLE squad_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        points INTEGER NOT NULL DEFAULT 1000
+      );
+    `)
+    db.prepare("INSERT INTO squad_members (name) VALUES ('Dele')").run()
+
+    expect(() => migrate(db)).not.toThrow()
+
+    // Existing row survived the rebuild...
+    const existing = db.prepare("SELECT id, name FROM squad_members WHERE name = 'Dele'").get() as
+      | { id: number; name: string }
+      | undefined
+    expect(existing?.name).toBe('Dele')
+
+    // ...and the same name can now be inserted again (a second room's "Dele").
+    expect(() => db.prepare("INSERT INTO squad_members (name) VALUES ('Dele')").run()).not.toThrow()
+  })
+
+  it('a fresh database allows duplicate squad_members names from the start', () => {
+    const db = new Database(':memory:')
+    migrate(db)
+    db.prepare("INSERT INTO squad_members (name) VALUES ('Zara')").run()
+    expect(() => db.prepare("INSERT INTO squad_members (name) VALUES ('Zara')").run()).not.toThrow()
+  })
+
   it('enforces uniqueness on room_token via the index', () => {
     const db = new Database(':memory:')
     migrate(db)

@@ -96,7 +96,6 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
     name: string
     points: number
   }[]
-  const joinedMemberIds = participants.map((p) => p.member_id)
   const status = effectiveStatus(bet)
   const pending = db
     .prepare('SELECT reason, created_at FROM pending_confirmations WHERE bet_id = ?')
@@ -239,7 +238,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       </table>
 
       {status === 'open' && (
-        <JoinBetForm betId={bet.id} stake={bet.stake} members={members} joinedMemberIds={joinedMemberIds} />
+        <JoinBetForm betId={bet.id} stake={bet.stake} homeTeam={bet.home_team} awayTeam={bet.away_team} />
       )}
 
       {/* S5: bet chat — user messages + auto-posted match events */}
