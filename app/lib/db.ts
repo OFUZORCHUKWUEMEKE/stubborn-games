@@ -86,9 +86,9 @@ export function migrate(db: Database.Database) {
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_bets_room_token ON bets(room_token)')
 
-  // Defensive: a local dev db created before ad-hoc per-room identity (v2
-  // rooms) still has squad_members.name UNIQUE, which SQLite's ALTER TABLE
-  // can't drop directly — names are no longer globally unique once
+  // Defensive: a local dev db created before ad-hoc per-room identity (S2,
+  // v2 rooms) still has squad_members.name UNIQUE, which SQLite's ALTER
+  // TABLE can't drop directly — names are no longer globally unique once
   // different rooms can each have their own "Dele". Rebuild the table only
   // if the old constraint is actually still present (checked via the
   // auto-index SQLite creates for an inline UNIQUE column), so this is a

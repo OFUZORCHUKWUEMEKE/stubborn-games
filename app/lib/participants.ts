@@ -4,13 +4,9 @@ import { getDb } from '@/lib/db'
 const MAX_NAME_LENGTH = 60
 
 /**
- * v2 rooms: ad-hoc display names replace picking from a fixed roster.
- * Shared by the join flow (S2/#24) and the bet-opener flow (S3/#25) so the
- * rule lives in exactly one place. (Note: this file is intentionally
- * identical to the one on feat/s2-join-by-name — S3 only depends on S1,
- * not S2, so it's branched independently rather than stacked on S2's
- * branch; expect a trivial "both added the same file" conflict whichever
- * of #31/this PR merges second.)
+ * S2 (v2 rooms): ad-hoc display names replace picking from a fixed roster.
+ * Shared by both the join flow and (S3) the bet-opener flow so the rule
+ * lives in exactly one place.
  */
 export function normalizeDisplayName(raw: string): string {
   return raw.trim()
@@ -25,8 +21,9 @@ export function validateDisplayName(raw: string): string | null {
 
 /**
  * "Already joined this room" check for typed names — case-insensitive and
- * trimmed. Scoped to one bet/room; the same name is free to be used in a
- * different room, since identity doesn't persist across rooms.
+ * trimmed (issue #24's open question: not specified in source, this is the
+ * decision made). Scoped to one bet/room; the same name is free to be used
+ * in a different room, since identity doesn't persist across rooms.
  */
 export function hasJoinedByName(betId: number, name: string, db: Database.Database = getDb()): boolean {
   const normalized = normalizeDisplayName(name).toLowerCase()

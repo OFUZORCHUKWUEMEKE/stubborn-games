@@ -14,7 +14,7 @@ import { getDb } from '@/lib/db'
 const CLI_PATH = process.env.LIVESCORE_CLI_PATH ?? 'livescore-pp-cli'
 const TIMEOUT_MS = 10_000
 
-type MatchEvent = { incident?: string; text?: string; time?: string }
+export type MatchEvent = { incident?: string; text?: string; time?: string }
 
 // Async, matching lib/livescore.ts's runCli — execFileSync here would block
 // the whole Node process (not just this request) for up to TIMEOUT_MS on
@@ -28,13 +28,22 @@ function runCli(args: string[]): Promise<{ code: number; stdout: string }> {
   })
 }
 
-function describeEvent(e: MatchEvent): string | null {
+// Verified against real livescore-pp-cli `match summary` output (issue #23's
+// open question): the incident field for cards is exactly 'FootballRedCard'
+// or 'FootballYellowCard' — no ambiguity, no need to parse the free-text
+// description. Red is checked first and treated as authoritative; anything
+// else matching /card/i (an unexpected variant, e.g. a future provider
+// change) falls back to the yellow treatment rather than being silently
+// dropped into the generic pass-through.
+export function describeEvent(e: MatchEvent): string | null {
   const text = e.text?.trim()
   if (!text) return null
   const time = e.time ? `${e.time} ` : ''
-  if (/goal/i.test(e.incident ?? '')) return `⚽ ${time}${text}`
-  if (/card/i.test(e.incident ?? '')) return `🟨 ${time}${text}`
-  if (/sub/i.test(e.incident ?? '')) return `🔁 ${time}${text}`
+  const incident = e.incident ?? ''
+  if (/goal/i.test(incident)) return `⚽ ${time}${text}`
+  if (incident === 'FootballRedCard') return `🟥 ${time}${text}`
+  if (/card/i.test(incident)) return `🟨 ${time}${text}`
+  if (/sub/i.test(incident)) return `🔁 ${time}${text}`
   return `${time}${text}` // other incidents (VAR, penalty missed…) pass through
 }
 

@@ -65,6 +65,7 @@ describe('hasJoinedByName', () => {
 
   it('does not collide across different bets/rooms', () => {
     const betId = seedBetWithOpener(db)
+    // A second, unrelated bet/room — same name should be free to join there.
     db.prepare(
       "INSERT INTO matches (home_team, away_team, kickoff_at) VALUES ('C', 'D', datetime('now', '+2 day'))"
     ).run()

@@ -70,11 +70,13 @@ describe('migrate', () => {
 
     expect(() => migrate(db)).not.toThrow()
 
+    // Existing row survived the rebuild...
     const existing = db.prepare("SELECT id, name FROM squad_members WHERE name = 'Dele'").get() as
       | { id: number; name: string }
       | undefined
     expect(existing?.name).toBe('Dele')
 
+    // ...and the same name can now be inserted again (a second room's "Dele").
     expect(() => db.prepare("INSERT INTO squad_members (name) VALUES ('Dele')").run()).not.toThrow()
   })
 
