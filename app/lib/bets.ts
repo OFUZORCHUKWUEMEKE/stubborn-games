@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { getDb } from '@/lib/db'
 import { generateRoomToken } from '@/lib/rooms'
-import { normalizeDisplayName } from '@/lib/participants'
+import { normalizeDisplayName, validateDisplayName, hasJoinedByName } from '@/lib/participants'
 
 export type BetCore = {
   id: number
@@ -20,8 +20,7 @@ export function effectiveStatus(bet: BetCore, now = new Date()): 'open' | 'locke
   return new Date(bet.kickoff_at).getTime() <= now.getTime() ? 'locked' : 'open'
 }
 
-export function getBetWithKickoff(betId: number): BetCore | undefined {
-  const db = getDb()
+export function getBetWithKickoff(betId: number, db: Database.Database = getDb()): BetCore | undefined {
   return db
     .prepare(
       `SELECT b.id, b.status, b.stake, m.kickoff_at
@@ -69,4 +68,50 @@ export function createBet(input: CreateBetInput, db: Database.Database = getDb()
   )
 
   return { betId, roomToken }
+}
+
+export type JoinRoomInput = {
+  betId: number
+  name: string
+  prediction: 'win' | 'lose' | 'draw'
+}
+
+/**
+ * S2/S4 (v2 rooms): join a room by typed name — no dropdown, and (S4/#26)
+ * no balance gate. A fresh squad_members row is created per join, same as
+ * the opener; there is no meaningful "insufficient points" check possible
+ * against a brand-new row's arbitrary starting default, so none exists here.
+ * (Settlement still credits winnings to that row's points afterward — that's
+ * not this check's concern; it powers the room's own post-settlement
+ * balance display, not a resource being gated on entry. See #26's PR notes.)
+ *
+ * DB-injectable, free of Next.js types — same thin-wrapper pattern as
+ * createBet/resolveRoomRedirect.
+ */
+export function joinRoom(input: JoinRoomInput, db: Database.Database = getDb()): { memberId: number } {
+  const nameError = validateDisplayName(input.name)
+  if (nameError) throw new Error(nameError)
+
+  const bet = getBetWithKickoff(input.betId, db)
+  if (!bet) throw new Error('Bet not found')
+
+  if (effectiveStatus(bet) === 'locked') {
+    throw new Error('This bet is locked — kickoff has passed')
+  }
+
+  if (hasJoinedByName(input.betId, input.name, db)) {
+    throw new Error('That name has already joined this room')
+  }
+
+  const displayName = normalizeDisplayName(input.name)
+  const memberResult = db.prepare('INSERT INTO squad_members (name) VALUES (?)').run(displayName)
+  const memberId = memberResult.lastInsertRowid as number
+
+  db.prepare('INSERT INTO bet_participants (bet_id, member_id, prediction) VALUES (?, ?, ?)').run(
+    input.betId,
+    memberId,
+    input.prediction
+  )
+
+  return { memberId }
 }
