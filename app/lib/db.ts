@@ -117,27 +117,25 @@ function squadMembersNameIsUnique(db: Database.Database): boolean {
   return false
 }
 
-function seed(db: Database.Database) {
-  const memberCount = (db.prepare('SELECT COUNT(*) AS n FROM squad_members').get() as { n: number }).n
-  if (memberCount === 0) {
-    const insertMember = db.prepare('INSERT INTO squad_members (name, points) VALUES (?, ?)')
-    for (const name of ['Dele', 'Chidi', 'Amara', 'Tunde', 'Ngozi']) {
-      insertMember.run(name, 1000)
-    }
-  }
-
+// S7 (v2 rooms): no fixed roster is seeded — squad_members is populated
+// entirely by rooms themselves (createBet/joinRoom each create their own
+// ad-hoc row per typed name). The table stays; only the hardcoded 5-person
+// seed data goes, since identity no longer exists before a room does.
+export function seed(db: Database.Database) {
   const matchCount = (db.prepare('SELECT COUNT(*) AS n FROM matches').get() as { n: number }).n
   if (matchCount === 0) {
     // Seeded fixtures carrying real livescore eids (from a `livescore-pp-cli sync`
     // of the current slate) so the bet page can look up live status/score.
     const insertMatch = db.prepare('INSERT INTO matches (home_team, away_team, kickoff_at, eid) VALUES (?, ?, ?, ?)')
+    // Relative to "now" rather than a fixed date — a hardcoded absolute
+    // kickoff goes stale (and locks/finishes) within a day of being seeded.
     const days = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString()
     // eid values: real upcoming Premier League / big-club fixtures where available;
     // null for placeholder rows, which the live panel reports as "no external id".
-    insertMatch.run('Brighton', 'Aston Villa', '2026-08-23T16:00:00Z', '1793529')
-    insertMatch.run('Manchester City', 'AFC Bournemouth', '2026-08-23T16:00:00Z', '1793531')
-    insertMatch.run('Newcastle United', 'Liverpool', '2026-08-23T18:30:00Z', '1793532')
-    insertMatch.run('West Bromwich Albion', 'Burnley', days(1), '1802348')
+    insertMatch.run('Brighton', 'Aston Villa', days(1), '1793529')
+    insertMatch.run('Manchester City', 'AFC Bournemouth', days(1), '1793531')
+    insertMatch.run('Newcastle United', 'Liverpool', days(2), '1793532')
+    insertMatch.run('West Bromwich Albion', 'Burnley', days(3), '1802348')
     insertMatch.run('Barcelona', 'Real Madrid', days(4), null)
   }
 }
