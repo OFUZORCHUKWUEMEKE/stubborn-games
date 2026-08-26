@@ -1,6 +1,24 @@
 import { describe, it, expect } from 'vitest'
 import Database from 'better-sqlite3'
-import { migrate } from '@/lib/db'
+import { migrate, seed } from '@/lib/db'
+
+describe('seed', () => {
+  it('does not create a fixed roster — rooms are the only source of participants (S7/#28)', () => {
+    const db = new Database(':memory:')
+    migrate(db)
+    seed(db)
+    const count = (db.prepare('SELECT COUNT(*) AS n FROM squad_members').get() as { n: number }).n
+    expect(count).toBe(0)
+  })
+
+  it('still seeds the demo match fixtures — unaffected by the roster removal', () => {
+    const db = new Database(':memory:')
+    migrate(db)
+    seed(db)
+    const count = (db.prepare('SELECT COUNT(*) AS n FROM matches').get() as { n: number }).n
+    expect(count).toBeGreaterThan(0)
+  })
+})
 
 describe('migrate', () => {
   it('is idempotent — running it twice does not error', () => {

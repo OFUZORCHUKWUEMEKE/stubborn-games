@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { migrate } from '@/lib/db'
 import { createBet, joinRoom } from '@/lib/bets'
+import { settleBet } from '@/lib/settlement'
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:')
@@ -110,5 +111,41 @@ describe('joinRoom', () => {
 
   it('rejects joining a bet that does not exist', () => {
     expect(() => joinRoom({ betId: 999_999, name: 'Ghost', prediction: 'lose' }, db)).toThrow()
+  })
+})
+
+describe('full room lifecycle against a completely empty database (S7/#28)', () => {
+  it('open -> join -> settle works with zero pre-existing squad_members rows', () => {
+    // No seed() call anywhere in this test — only migrate(). Directly
+    // covers issue #28's acceptance criterion: the app is fully functional
+    // from an empty database, using only names typed during the flow.
+    const db = new Database(':memory:')
+    migrate(db)
+    expect((db.prepare('SELECT COUNT(*) AS n FROM squad_members').get() as { n: number }).n).toBe(0)
+
+    // A JS-generated ISO string (matching lib/db.ts's own seed() convention),
+    // not SQLite's datetime('now', ...) — that produces a naive
+    // "YYYY-MM-DD HH:MM:SS" string with no UTC marker, which new Date()
+    // parses as *local* time. In a UTC+1 environment, "+1 hour" then
+    // collapses to effectively "now" once re-parsed as local — a real trap
+    // worth documenting here, not just silently working around.
+    const kickoffInOneHour = new Date(Date.now() + 60 * 60 * 1000).toISOString()
+    db.prepare('INSERT INTO matches (home_team, away_team, kickoff_at) VALUES (?, ?, ?)').run(
+      'Home FC',
+      'Away FC',
+      kickoffInOneHour
+    )
+
+    const { betId } = createBet({ matchId: 1, openerName: 'Opener', stake: 150, prediction: 'win' }, db)
+    joinRoom({ betId, name: 'Joiner', prediction: 'lose' }, db) // still open, before kickoff
+
+    // settleBet itself doesn't gate on kickoff timing (settlePendingBets'
+    // SQL scan does that separately) — calling it directly here is fine
+    // regardless of the match's actual kickoff time.
+    const result = settleBet(betId, { homeScore: 2, awayScore: 0 }, db)
+    expect(result.outcome).toBe('win')
+
+    const names = db.prepare('SELECT name FROM squad_members ORDER BY id').all() as { name: string }[]
+    expect(names.map((n) => n.name)).toEqual(['Opener', 'Joiner'])
   })
 })
