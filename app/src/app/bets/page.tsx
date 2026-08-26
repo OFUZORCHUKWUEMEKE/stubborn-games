@@ -79,7 +79,7 @@ export default function BetsListPage() {
       )}
 
       <p>
-        <Link href="/bets/new">Open a bet →</Link> · <Link href="/leaderboard">Leaderboard</Link>
+        <Link href="/bets/new">Open a bet →</Link>
       </p>
     </main>
   )
