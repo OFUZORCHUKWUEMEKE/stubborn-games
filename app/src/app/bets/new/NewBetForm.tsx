@@ -60,8 +60,11 @@ export default function NewBetForm({ matches }: { matches: Match[] }) {
         setSubmitting(false)
         return
       }
-      const data = (await res.json()) as { id: number }
-      router.push(`/bets/${data.id}`)
+      // Route by the room's token, not its numeric id — /bets/:id no longer
+      // exists as a page at all (see rooms/[token]/page.tsx's header comment
+      // for why: a guessable id defeats the whole point of the token).
+      const data = (await res.json()) as { id: number; roomToken: string }
+      router.push(`/rooms/${data.roomToken}`)
     } catch {
       setError('Network error — please try again.')
       setSubmitting(false)

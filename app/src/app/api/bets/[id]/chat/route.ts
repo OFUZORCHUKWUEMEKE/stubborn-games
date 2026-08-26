@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getDb } from '@/lib/db'
+import { isRoomParticipant } from '@/lib/participants'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,13 +30,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!db.prepare('SELECT id FROM bets WHERE id = ?').get(betId)) {
     return NextResponse.json({ error: 'Bet not found' }, { status: 404 })
   }
-  if (!db.prepare('SELECT id FROM squad_members WHERE id = ?').get(memberId)) {
-    return NextResponse.json({ error: 'Squad member not found' }, { status: 400 })
+  // Security: squad_members spans every room in the app (S2/S3 create a
+  // fresh row per join/open), so "does this id exist" is not enough — it
+  // must be a participant of *this* bet, or anyone could post chat messages
+  // under a name that belongs to a completely different room.
+  const memberIdNum = memberId as number
+  if (!isRoomParticipant(betId, memberIdNum, db)) {
+    return NextResponse.json({ error: 'Not a participant in this room' }, { status: 403 })
   }
 
   const result = db
     .prepare("INSERT INTO chat_messages (bet_id, member_id, kind, text) VALUES (?, ?, 'user', ?)")
-    .run(betId, memberId, text.trim())
+    .run(betId, memberIdNum, text.trim())
 
   return NextResponse.json({ id: result.lastInsertRowid }, { status: 201 })
 }

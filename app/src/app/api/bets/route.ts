@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     })
     return NextResponse.json(
       { id: betId, roomToken },
-      { status: 201, headers: { Location: `/bets/${betId}` } }
+      { status: 201, headers: { Location: `/rooms/${roomToken}` } }
     )
   } catch (e) {
     const message = e instanceof Error ? e.message : 'Failed to create bet'
