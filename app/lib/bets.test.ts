@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { migrate } from '@/lib/db'
-import { createBet } from '@/lib/bets'
+import { createBet, joinRoom } from '@/lib/bets'
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:')
@@ -62,5 +62,53 @@ describe('createBet', () => {
     const second = createBet({ matchId: 1, openerName: 'Dele', stake: 50, prediction: 'draw' }, db)
     expect(first.betId).not.toBe(second.betId)
     expect(first.roomToken).not.toBe(second.roomToken)
+  })
+})
+
+describe('joinRoom', () => {
+  let db: Database.Database
+  let betId: number
+
+  beforeEach(() => {
+    db = freshDb()
+    betId = createBet({ matchId: 1, openerName: 'Opener', stake: 300, prediction: 'win' }, db).betId
+  })
+
+  it('adds a participant under the typed name', () => {
+    joinRoom({ betId, name: 'Zara', prediction: 'lose' }, db)
+    const row = db
+      .prepare(
+        `SELECT sm.name, bp.prediction FROM bet_participants bp
+         JOIN squad_members sm ON sm.id = bp.member_id
+         WHERE bp.bet_id = ? AND sm.name = 'Zara'`
+      )
+      .get(betId) as { name: string; prediction: string } | undefined
+    expect(row?.prediction).toBe('lose')
+  })
+
+  it('allows a stake far above any default starting balance — S4: no balance gate', () => {
+    // The bet's stake (300) is well under a plausible old "starting balance"
+    // ceiling, so exercise the case that would have failed under the old
+    // gate: a bet whose stake exceeds any single fresh member's default.
+    const bigBetId = createBet({ matchId: 1, openerName: 'BigOpener', stake: 5000, prediction: 'win' }, db).betId
+    expect(() => joinRoom({ betId: bigBetId, name: 'Newcomer', prediction: 'lose' }, db)).not.toThrow()
+  })
+
+  it('rejects a second join under the same name in the same room (case-insensitive, trimmed)', () => {
+    joinRoom({ betId, name: 'Zara', prediction: 'lose' }, db)
+    expect(() => joinRoom({ betId, name: '  zara  ', prediction: 'draw' }, db)).toThrow()
+  })
+
+  it('rejects an invalid (empty) name', () => {
+    expect(() => joinRoom({ betId, name: '   ', prediction: 'lose' }, db)).toThrow()
+  })
+
+  it('rejects joining after kickoff has passed', () => {
+    db.prepare("UPDATE matches SET kickoff_at = datetime('now', '-1 hour') WHERE id = 1").run()
+    expect(() => joinRoom({ betId, name: 'Latecomer', prediction: 'lose' }, db)).toThrow()
+  })
+
+  it('rejects joining a bet that does not exist', () => {
+    expect(() => joinRoom({ betId: 999_999, name: 'Ghost', prediction: 'lose' }, db)).toThrow()
   })
 })

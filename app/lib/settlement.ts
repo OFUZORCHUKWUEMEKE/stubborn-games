@@ -1,3 +1,4 @@
+import type Database from 'better-sqlite3'
 import { getDb } from '@/lib/db'
 import { fetchMatchLive } from '@/lib/livescore'
 import { confirmWithSecondSource } from '@/lib/second-source'
@@ -23,9 +24,11 @@ export type SettleResult = {
   payouts: { memberId: number; amount: number }[]
 }
 
-export function settleBet(betId: number, live: { homeScore: number; awayScore: number }): SettleResult {
-  const db = getDb()
-
+export function settleBet(
+  betId: number,
+  live: { homeScore: number; awayScore: number },
+  db: Database.Database = getDb()
+): SettleResult {
   // Guard: never settle twice (UNIQUE on bet_id backs this up)
   const existing = db.prepare('SELECT id FROM settlements WHERE bet_id = ?').get(betId)
   if (existing) throw new Error(`bet ${betId} already settled`)
@@ -99,9 +102,7 @@ export function settleBet(betId: number, live: { homeScore: number; awayScore: n
  * Manual trigger per the issue's implementation note — livescore-pp-cli has
  * no dedicated abandoned/postponed status field.
  */
-export function refundBet(betId: number, reason: string): SettleResult {
-  const db = getDb()
-
+export function refundBet(betId: number, reason: string, db: Database.Database = getDb()): SettleResult {
   const existing = db.prepare('SELECT id FROM settlements WHERE bet_id = ?').get(betId)
   if (existing) throw new Error(`bet ${betId} already has a settlement record`)
 
