@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getDb } from '@/lib/db'
 import { effectiveStatus } from '@/lib/bets'
+import { getBetIdByRoomToken } from '@/lib/rooms'
 import LiveScore from './LiveScore'
 import JoinBetForm from './JoinBetForm'
 import BetChat from './BetChat'
@@ -19,7 +20,6 @@ type BetRow = {
   away_team: string
   kickoff_at: string
   opener_name: string
-  room_token: string | null
 }
 
 type Settlement = {
@@ -28,15 +28,25 @@ type Settlement = {
   away_score: number | null
 }
 
-export default async function BetPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params
-  const betId = Number(id)
-  if (!Number.isInteger(betId)) notFound()
+/**
+ * The canonical, and only, way to reach a room's content. Numeric bet ids
+ * are never routable to directly — this is the fix for a real privacy hole:
+ * S1 chose an unguessable room_token specifically because sequential ids
+ * are enumerable, but earlier versions of this app only ever used the token
+ * as a redirect *into* /bets/:id, which stayed directly reachable on its
+ * own. That defeated the whole point — anyone could browse every room via
+ * a sequential id or the old /bets listing. Both are gone now; this page
+ * (resolved by token, nothing else) is the only door in.
+ */
+export default async function RoomPage({ params }: { params: Promise<{ token: string }> }) {
+  const { token } = await params
 
   const db = getDb()
+  const betId = getBetIdByRoomToken(token, db)
+  if (betId == null) notFound()
 
-  // S6: opportunistic settlement scan — viewing a bet page is enough to move
-  // finished matches to their settled state. No admin step. Idempotent.
+  // S6: opportunistic settlement scan — viewing a room is enough to move a
+  // finished match to its settled state. No admin step. Idempotent.
   try {
     const { settlePendingBets } = await import('@/lib/settlement')
     await settlePendingBets()
@@ -55,7 +65,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
   const bet = db
     .prepare(
-      `SELECT b.id, b.status, b.stake, b.prediction, b.created_at, b.room_token,
+      `SELECT b.id, b.status, b.stake, b.prediction, b.created_at,
               m.home_team, m.away_team, m.kickoff_at,
               sm.name AS opener_name
        FROM bets b
@@ -67,15 +77,11 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
 
   if (!bet) notFound()
 
-  // Absolute so it's actually shareable when pasted outside the app (a group
-  // chat, etc.) — a bet created before room_token existed (pre-migration
-  // local db) simply has no link to show.
-  let roomLink: string | null = null
-  if (bet.room_token) {
-    const h = await headers()
-    const proto = h.get('x-forwarded-proto') ?? 'http'
-    roomLink = `${proto}://${h.get('host')}/rooms/${bet.room_token}`
-  }
+  // Absolute so it's actually shareable when pasted outside the app (a
+  // group chat, etc.) — this page's own URL, echoed back for easy copying.
+  const h = await headers()
+  const proto = h.get('x-forwarded-proto') ?? 'http'
+  const roomLink = `${proto}://${h.get('host')}/rooms/${token}`
 
   const participants = db
     .prepare(
@@ -91,11 +97,6 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
     | Settlement
     | undefined
 
-  const members = db.prepare('SELECT id, name, points FROM squad_members ORDER BY id').all() as {
-    id: number
-    name: string
-    points: number
-  }[]
   const status = effectiveStatus(bet)
   const pending = db
     .prepare('SELECT reason, created_at FROM pending_confirmations WHERE bet_id = ?')
@@ -123,11 +124,9 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       <p>Kickoff: {new Date(bet.kickoff_at).toLocaleString()}</p>
 
       {/* S1 (v2 rooms): shareable room link — send this into the group chat */}
-      {roomLink && (
-        <p style={{ background: '#f0f4f8', padding: '0.6rem 0.9rem', borderRadius: 4 }}>
-          Share this room: <code style={{ userSelect: 'all' }}>{roomLink}</code>
-        </p>
-      )}
+      <p style={{ background: '#f0f4f8', padding: '0.6rem 0.9rem', borderRadius: 4 }}>
+        Share this room: <code style={{ userSelect: 'all' }}>{roomLink}</code>
+      </p>
 
       {/* S2: live status/score from livescore-pp-cli (read-only display) */}
       <LiveScore betId={bet.id} />
@@ -226,9 +225,12 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
                 {settlement && (
                   <>
                     <td>{refunded ? 'Refunded' : isCorrect ? 'Won' : 'Lost'}</td>
-                    <td>
-                      {members.find((m) => m.id === p.member_id)?.points ?? p.points} pts
-                    </td>
+                    {/* p.points already reflects any settlement — the scan
+                        above runs before this query, and there's no reason
+                        to re-query all of squad_members globally just to
+                        look the same value back up (that also used to be
+                        the source of the chat-impersonation bug below). */}
+                    <td>{p.points} pts</td>
                   </>
                 )}
               </tr>
@@ -241,11 +243,13 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
         <JoinBetForm betId={bet.id} stake={bet.stake} homeTeam={bet.home_team} awayTeam={bet.away_team} />
       )}
 
-      {/* S5: bet chat — user messages + auto-posted match events */}
-      <BetChat betId={bet.id} members={members.map(({ id, name }) => ({ id, name }))} />
+      {/* S5: bet chat — user messages + auto-posted match events.
+          Scoped to this room's actual participants, not a global query —
+          see lib/participants.ts's isRoomParticipant for why that matters. */}
+      <BetChat betId={bet.id} members={participants.map(({ member_id, name }) => ({ id: member_id, name }))} />
 
       <p>
-        <Link href="/bets">All bets</Link> · <Link href="/bets/new">Open a bet →</Link>
+        <Link href="/bets/new">Open a bet →</Link>
       </p>
     </main>
   )

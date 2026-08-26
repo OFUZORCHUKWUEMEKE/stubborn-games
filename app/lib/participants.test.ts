@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { migrate } from '@/lib/db'
-import { normalizeDisplayName, validateDisplayName, hasJoinedByName } from '@/lib/participants'
+import { normalizeDisplayName, validateDisplayName, hasJoinedByName, isRoomParticipant } from '@/lib/participants'
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:')
@@ -74,5 +74,38 @@ describe('hasJoinedByName', () => {
     ).run()
     expect(hasJoinedByName(2, 'Bayo', db)).toBe(false)
     expect(betId).toBe(1)
+  })
+})
+
+describe('isRoomParticipant', () => {
+  let db: Database.Database
+  beforeEach(() => {
+    db = freshDb()
+  })
+
+  it('is true for a member who actually joined this bet', () => {
+    const betId = seedBetWithOpener(db)
+    expect(isRoomParticipant(betId, 1, db)).toBe(true)
+  })
+
+  it('is false for a real squad_members row that belongs to a different room — the security case', () => {
+    const betId = seedBetWithOpener(db) // bet 1, opener is member id 1
+    // A second, unrelated room with its own opener (member id 2).
+    db.prepare(
+      "INSERT INTO matches (home_team, away_team, kickoff_at) VALUES ('C', 'D', datetime('now', '+2 day'))"
+    ).run()
+    db.prepare("INSERT INTO squad_members (name) VALUES ('Stranger')").run() // id 2
+    db.prepare(
+      "INSERT INTO bets (match_id, created_by, stake, prediction, room_token) VALUES (2, 2, 50, 'draw', 'tok2')"
+    ).run()
+    db.prepare("INSERT INTO bet_participants (bet_id, member_id, prediction) VALUES (2, 2, 'draw')").run()
+
+    // Member 2 is a real row in squad_members (from room 2) but never joined room 1.
+    expect(isRoomParticipant(betId, 2, db)).toBe(false)
+  })
+
+  it('is false for a member id that does not exist at all', () => {
+    const betId = seedBetWithOpener(db)
+    expect(isRoomParticipant(betId, 999_999, db)).toBe(false)
   })
 })

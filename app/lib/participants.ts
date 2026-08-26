@@ -36,3 +36,18 @@ export function hasJoinedByName(betId: number, name: string, db: Database.Databa
     .get(betId, normalized)
   return !!row
 }
+
+/**
+ * Security check: is this squad_members row actually a participant of THIS
+ * bet? Every join/open creates its own fresh row (S2/S3), so squad_members
+ * as a whole spans every room in the app, not just one — a plain "does this
+ * member id exist" check is not enough to gate an action scoped to one room.
+ * Used to stop chat posts (and anything else keyed by memberId) being sent
+ * under a name that belongs to a completely different, unrelated room.
+ */
+export function isRoomParticipant(betId: number, memberId: number, db: Database.Database = getDb()): boolean {
+  const row = db
+    .prepare('SELECT 1 FROM bet_participants WHERE bet_id = ? AND member_id = ?')
+    .get(betId, memberId)
+  return !!row
+}
