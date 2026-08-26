@@ -245,7 +245,7 @@ export default async function BetPage({ params }: { params: Promise<{ id: string
       <BetChat betId={bet.id} members={members.map(({ id, name }) => ({ id, name }))} />
 
       <p>
-        <Link href="/bets/new">Open a bet →</Link> · <Link href="/leaderboard">Leaderboard</Link>
+        <Link href="/bets">All bets</Link> · <Link href="/bets/new">Open a bet →</Link>
       </p>
     </main>
   )
