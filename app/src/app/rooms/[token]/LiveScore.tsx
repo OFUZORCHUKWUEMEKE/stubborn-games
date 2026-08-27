@@ -55,15 +55,21 @@ export default function LiveScore({ betId }: { betId: number }) {
     return () => clearInterval(t)
   }, [refresh])
 
-  if (!loaded) return <p>Loading live score…</p>
+  if (!loaded) {
+    return <p className="hero-note mono">Loading live score…</p>
+  }
+
   if (!live || !live.available) {
+    // Skip the parenthetical when the reason just restates "unavailable" —
+    // API-observed values: 'no external id' is worth showing, 'score
+    // unavailable' isn't (it's the same word said twice).
+    const reasonSuffix = live?.reason && live.reason !== 'score unavailable' ? ` (${live.reason})` : ''
     return (
-      <section aria-label="Live match data">
-        <p>
-          Score unavailable
-          {live?.reason ? ` (${live.reason})` : ''} — showing seeded fixture only.
-        </p>
-      </section>
+      <div className="live-banner" aria-label="Live match data">
+        <span className="hero-note">
+          Score unavailable{reasonSuffix} — showing seeded fixture only.
+        </span>
+      </div>
     )
   }
 
@@ -71,19 +77,30 @@ export default function LiveScore({ betId }: { betId: number }) {
   const scheduled = live.statusClass === 'scheduled'
 
   return (
-    <section aria-label="Live match data">
-      <p style={{ fontSize: '1.5rem', fontWeight: 'bold' }}>
-        {live.home} {live.homeScore ?? '-'} : {live.awayScore ?? '-'} {live.away}
-      </p>
-      <p>
-        Status:{' '}
-        {scheduled ? (
-          <>Not started — kicks off {live.kickoff ? new Date(live.kickoff).toLocaleString() : 'soon'}</>
-        ) : (
-          statusLabel(live)
+    <div className="live-banner" aria-label="Live match data">
+      <div>
+        {!scheduled && !finished && (
+          <span className="live-tag">
+            <span className="live-dot" /> Live · {statusLabel(live)}
+          </span>
         )}
-        {!finished && <small> (auto-refreshes)</small>}
-      </p>
-    </section>
+        {finished && <span className="live-tag" style={{ color: 'var(--ink-dim)' }}>Full time</span>}
+        {scheduled && <span className="hero-note">Not started</span>}
+        <div className="score-row">
+          <span className="score-team">{live.home}</span>
+          <span className="score-figure">{live.homeScore ?? '–'}</span>
+          <span className="score-sep">–</span>
+          <span className="score-figure">{live.awayScore ?? '–'}</span>
+          <span className="score-team">{live.away}</span>
+        </div>
+      </div>
+      <span className="hero-note">
+        {scheduled
+          ? `Kicks off ${live.kickoff ? new Date(live.kickoff).toLocaleString() : 'soon'}`
+          : !finished
+            ? 'Auto-refreshes'
+            : ''}
+      </span>
+    </div>
   )
 }

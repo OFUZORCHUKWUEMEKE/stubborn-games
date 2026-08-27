@@ -72,71 +72,76 @@ export default function NewBetForm({ matches }: { matches: Match[] }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem', maxWidth: 480 }}>
-      <label>
-        Your name
+    <form onSubmit={handleSubmit}>
+      <div className="field-row">
+        <span className="field-label">Your name</span>
         <input
           type="text"
+          className="text-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Marco"
           maxLength={60}
           required
         />
-      </label>
+      </div>
 
-      <label>
-        Match
-        <select value={matchId} onChange={(e) => setMatchId(e.target.value)} required>
-          <option value="">— pick an upcoming match —</option>
+      <div className="field-stack">
+        <span className="field-label">Match</span>
+        <div className="fixture-list">
           {matches.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.home_team} vs {m.away_team} — {new Date(m.kickoff_at).toLocaleString()}
-            </option>
+            <button
+              key={m.id}
+              type="button"
+              className={`fixture${matchId === m.id.toString() ? ' selected' : ''}`}
+              aria-pressed={matchId === m.id.toString()}
+              onClick={() => setMatchId(m.id.toString())}
+            >
+              <span className="fixture-name">
+                {m.home_team} vs {m.away_team}
+              </span>
+              <span className="fixture-ko mono">{new Date(m.kickoff_at).toLocaleString()}</span>
+            </button>
           ))}
-        </select>
-      </label>
+        </div>
+      </div>
 
-      <label>
-        Stake (points)
+      <div className="field-row">
+        <span className="field-label">Stake</span>
         <input
           type="number"
+          className="text-input mono"
           min="1"
           step="1"
           value={stake}
           onChange={(e) => setStake(e.target.value)}
-          placeholder="e.g. 100"
+          placeholder="e.g. 100 pts"
           required
         />
-      </label>
+      </div>
 
-      <fieldset>
-        <legend>Your prediction</legend>
-        {!selectedMatch && <p style={{ color: '#888', margin: '0 0 0.5rem' }}>Pick a match first to see your options.</p>}
-        {(['win', 'lose', 'draw'] as const).map((p) => (
-          <label key={p} style={{ marginRight: '1rem' }}>
-            <input
-              type="radio"
-              name="prediction"
-              value={p}
-              checked={prediction === p}
-              onChange={() => setPrediction(p)}
-              required
-            />
-            {' '}
-            {predictionLabel(p)}
-          </label>
-        ))}
-      </fieldset>
+      <div className="field-stack">
+        <span className="field-label">Your prediction</span>
+        {!selectedMatch && <p className="field-hint" style={{ marginTop: 0 }}>Pick a match first to see your options.</p>}
+        <div className="pick-toggle">
+          {(['win', 'lose', 'draw'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`pick-option${prediction === p ? ' selected' : ''}`}
+              aria-pressed={prediction === p}
+              onClick={() => setPrediction(p)}
+            >
+              {predictionLabel(p)}
+            </button>
+          ))}
+        </div>
+      </div>
 
-      {error && (
-        <p role="alert" style={{ color: 'red' }}>
-          {error}
-        </p>
-      )}
+      {error && <p className="error-text" role="alert">{error}</p>}
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Opening bet…' : 'Open bet'}
+      <button type="submit" className="stamp-button" disabled={submitting}>
+        {submitting ? 'Opening…' : 'Open the bet'}
       </button>
     </form>
   )
