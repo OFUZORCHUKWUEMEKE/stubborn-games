@@ -4,6 +4,19 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 type Msg = { id: number; kind: 'user' | 'event'; text: string; created_at: string; sender: string | null }
 
+// The design mockup pre-fills who's talking — it never had to solve "who is
+// this browser tab" since there's no session/account system to ask instead.
+// The real app still needs *some* way to know who's sending, so this keeps a
+// sender picker (styled to blend into the chat row) rather than guessing.
+const EVENT_EMOJI = /^[⚽🟥🟨🔁]\s*/
+
+function eventVariant(text: string): 'goal' | 'card-red' | 'card-yellow' | 'sys' {
+  if (text.startsWith('⚽')) return 'goal'
+  if (text.startsWith('🟥')) return 'card-red'
+  if (text.startsWith('🟨')) return 'card-yellow'
+  return 'sys'
+}
+
 export default function BetChat({ betId, members }: { betId: number; members: { id: number; name: string }[] }) {
   const [messages, setMessages] = useState<Msg[]>([])
   const [senderId, setSenderId] = useState(members[0]?.id.toString() ?? '')
@@ -61,52 +74,64 @@ export default function BetChat({ betId, members }: { betId: number; members: { 
   }
 
   return (
-    <section aria-label="Bet chat" style={{ border: '1px solid #888', padding: '1rem', marginTop: '2rem' }}>
-      <h2>Match chat</h2>
+    <div className="chat-panel" aria-label="Bet chat">
+      <div className="chat-head">
+        <h2>Room chat</h2>
+        <span className="count mono">{members.length} in the room</span>
+      </div>
 
-      <div style={{ maxHeight: 320, overflowY: 'auto', marginBottom: '1rem' }}>
-        {messages.length === 0 && <p style={{ color: '#888' }}>No messages yet — say something!</p>}
-        {messages.map((m) =>
-          m.kind === 'event' ? (
-            <p key={m.id} style={{ background: '#eef6ff', padding: '0.3rem 0.6rem', fontStyle: 'italic' }}>
-              <strong>[match]</strong> {m.text}
-            </p>
-          ) : (
-            <p key={m.id}>
-              <strong>{m.sender ?? '???'}</strong>{' '}
-              <small style={{ color: '#888' }}>{new Date(m.created_at + 'Z').toLocaleTimeString()}</small>
-              <br />
+      <div className="chat-list">
+        {messages.length === 0 && <p className="hero-note">No messages yet — say something!</p>}
+        {messages.map((m) => {
+          if (m.kind === 'event') {
+            const variant = eventVariant(m.text)
+            const displayText = m.text.replace(EVENT_EMOJI, '')
+            return (
+              <div key={m.id} className={`chat-event ${variant}`}>
+                {(variant === 'card-yellow' || variant === 'card-red') && (
+                  <span className={`card-chip ${variant === 'card-red' ? 'r' : 'y'}`} />
+                )}
+                {displayText}
+              </div>
+            )
+          }
+          return (
+            <div key={m.id} className="chat-msg">
+              <span className="who">
+                {m.sender ?? '???'} <span className="mono" style={{ opacity: 0.7 }}>{new Date(m.created_at + 'Z').toLocaleTimeString()}</span>
+              </span>
               {m.text}
-            </p>
+            </div>
           )
-        )}
+        })}
         <div ref={bottomRef} />
       </div>
 
-      <form onSubmit={send} style={{ display: 'grid', gap: '0.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <select value={senderId} onChange={(e) => setSenderId(e.target.value)}>
+      <form onSubmit={send}>
+        <div className="chat-input-row">
+          <select
+            className="text-input mono"
+            style={{ minWidth: 110, flex: '0 0 auto', textAlign: 'left' }}
+            value={senderId}
+            onChange={(e) => setSenderId(e.target.value)}
+          >
             {members.map((m) => (
               <option key={m.id} value={m.id}>{m.name}</option>
             ))}
           </select>
           <input
+            className="chat-input"
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder="Type a message…"
             maxLength={500}
-            style={{ flex: 1 }}
           />
-          <button type="submit" disabled={sending}>
+          <button type="submit" className="send-btn" disabled={sending}>
             {sending ? '…' : 'Send'}
           </button>
         </div>
-        {error && (
-          <p role="alert" style={{ color: 'red' }}>
-            {error}
-          </p>
-        )}
+        {error && <p className="error-text" role="alert">{error}</p>}
       </form>
-    </section>
+    </div>
   )
 }

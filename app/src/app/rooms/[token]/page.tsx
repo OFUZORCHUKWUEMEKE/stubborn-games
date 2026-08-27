@@ -7,6 +7,7 @@ import { getBetIdByRoomToken } from '@/lib/rooms'
 import LiveScore from './LiveScore'
 import JoinBetForm from './JoinBetForm'
 import BetChat from './BetChat'
+import CopyRoomLink from './CopyRoomLink'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,6 +27,14 @@ type Settlement = {
   outcome: 'win' | 'lose' | 'draw' | 'refund'
   home_score: number | null
   away_score: number | null
+}
+
+const STAMP_LABEL: Record<string, string> = {
+  open: 'Open',
+  locked: 'Locked',
+  pending: 'Pending confirmation',
+  settled: 'Settled',
+  refunded: 'Refunded',
 }
 
 /**
@@ -102,6 +111,11 @@ export default async function RoomPage({ params }: { params: Promise<{ token: st
     .prepare('SELECT reason, created_at FROM pending_confirmations WHERE bet_id = ?')
     .get(betId) as { reason: string; created_at: string } | undefined
 
+  // effectiveStatus doesn't know about pending_confirmations (that's a
+  // settlement-layer concept, not a bet-lifecycle one) — fold it in here
+  // for display purposes only.
+  const displayStatus = pending ? 'pending' : status
+
   const outcomeText = (() => {
     if (!settlement) return ''
     switch (settlement.outcome) {
@@ -116,140 +130,148 @@ export default async function RoomPage({ params }: { params: Promise<{ token: st
     }
   })()
 
+  const pot = bet.stake * participants.length
+
   return (
-    <main style={{ padding: '2rem' }}>
-      <h1>
+    <main className="page">
+      <div className="top-nav">
+        <Link href="/" className="wordmark">
+          SQUAD PICKS<span className="dot">.</span>
+        </Link>
+        <span className={`stamp ${displayStatus}`}>{STAMP_LABEL[displayStatus]}</span>
+      </div>
+
+      <h1 className="screen-title">
         {bet.home_team} vs {bet.away_team}
       </h1>
-      <p>Kickoff: {new Date(bet.kickoff_at).toLocaleString()}</p>
+      <p className="screen-meta">Private room · kickoff {new Date(bet.kickoff_at).toLocaleString()}</p>
 
-      {/* S1 (v2 rooms): shareable room link — send this into the group chat */}
-      <p style={{ background: '#f0f4f8', padding: '0.6rem 0.9rem', borderRadius: 4 }}>
-        Share this room: <code style={{ userSelect: 'all' }}>{roomLink}</code>
-      </p>
+      <div className="room-link">
+        <span className="room-link-label mono">Room link</span>
+        <span className="room-link-url">{roomLink}</span>
+        <CopyRoomLink link={roomLink} />
+      </div>
 
-      {/* S2: live status/score from livescore-pp-cli (read-only display) */}
-      <LiveScore betId={bet.id} />
+      <div className="stub">
+        <div className="stub-inner">
+          {/* S2: live status/score from livescore-pp-cli (read-only display) */}
+          <LiveScore betId={bet.id} />
 
-      <dl>
-        <dt>Status</dt>
-        <dd style={status !== 'open' ? { fontWeight: 'bold' } : undefined}>
-          {pending && 'Pending confirmation'}
-          {!pending && status === 'locked' && 'Locked — no new joins after kickoff'}
-          {!pending && status === 'settled' && 'Settled'}
-          {!pending && status === 'refunded' && 'Refunded'}
-          {!pending && status === 'open' && 'Open'}
-        </dd>
+          <div className="room-strip">
+            <div className="room-fact">
+              <span className="k">Stake to join</span>
+              <span className="v mono">{bet.stake} pts</span>
+            </div>
+            <div className="room-fact">
+              <span className="k">Opened by</span>
+              <span className="v">{bet.opener_name}</span>
+            </div>
+            <div className="room-fact">
+              <span className="k">Pot</span>
+              <span className="v mono">{pot} pts</span>
+            </div>
+          </div>
 
-        <dt>Stake</dt>
-        <dd>{bet.stake} points</dd>
+          {pending && (
+            <div className="banner wait">
+              <p className="banner-title">
+                <span className="wait-dots"><span /><span /><span /></span>
+                Pending confirmation
+              </p>
+              <p className="banner-body">
+                No points have moved, and that's deliberate. Two independent score feeds have to agree
+                before this room pays out — until they do, every stake stays exactly where it is.
+              </p>
+              <div className="reason-row">Reason · {pending.reason}</div>
+            </div>
+          )}
 
-        <dt>Opened by</dt>
-        <dd>{bet.opener_name}</dd>
-      </dl>
+          {settlement && settlement.outcome !== 'refund' && !pending && (
+            <div className="banner result">
+              <p className="banner-title">Settled</p>
+              <p className="banner-body">
+                <strong>{outcomeText}.</strong> Winners split the pot — see below.
+              </p>
+            </div>
+          )}
 
-      {pending && (
-        <section
-          aria-label="Pending confirmation"
-          style={{ border: '1px solid #d80', background: '#fff3e0', padding: '1rem', marginTop: '1rem' }}
-        >
-          <h2>Pending confirmation</h2>
-          <p>
-            The data sources disagree (or the second source is unavailable), so this bet has{' '}
-            <strong>not been settled yet</strong> — no points have moved. A hold like this is exactly how the app
-            avoids paying out on a wrong score.
-          </p>
-          <p style={{ color: '#666' }}>
-            <small>Reason: {pending.reason}</small>
-          </p>
-        </section>
-      )}
+          {settlement && settlement.outcome === 'refund' && !pending && (
+            <div className="banner neutral">
+              <p className="banner-title">Refunded</p>
+              <p className="banner-body">
+                This match was abandoned/postponed, or nobody picked correctly. Every stake was returned
+                in full — nobody gains, nobody loses.
+              </p>
+            </div>
+          )}
 
-      {settlement && settlement.outcome !== 'refund' && (
-        <section aria-label="Settlement" style={{ border: '1px solid #2c2', padding: '1rem', marginTop: '1rem' }}>
-          <h2>Settled</h2>
-          <p>
-            <strong>Result:</strong> {outcomeText}
-          </p>
-          <p>
-            <strong>Winners split the pot.</strong> See each member&apos;s outcome below.
-          </p>
-        </section>
-      )}
-
-      {settlement && settlement.outcome === 'refund' && (
-        <section
-          aria-label="Refund"
-          style={{ border: '1px solid #c82', background: '#fff8e6', padding: '1rem', marginTop: '1rem' }}
-        >
-          <h2>Refunded</h2>
-          <p>
-            This match was abandoned/postponed or had no correct picks. Every participant&apos;s stake was
-            returned in full — nobody gains, nobody loses (no partial settlement on an ambiguous result).
-          </p>
-        </section>
-      )}
-
-      <h2>Participants</h2>
-      <table>
-        <thead>
-          <tr>
-            <th align="left">Member</th>
-            <th align="left">Prediction</th>
-            <th align="left">Stake</th>
-            {settlement && (
-              <>
-                <th align="left">Outcome</th>
-                <th align="left">Balance</th>
-              </>
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {participants.map((p) => {
-            const isCorrect = settlement ? p.prediction === settlement.outcome : false
-            const refunded = settlement?.outcome === 'refund'
-            return (
-              <tr key={p.member_id}>
-                <td>{p.name}</td>
-                <td
-                  style={
-                    settlement && !refunded
-                      ? { fontWeight: isCorrect ? 'bold' : 'normal', color: isCorrect ? 'green' : undefined }
-                      : undefined
-                  }
-                >
-                  {p.prediction[0].toUpperCase() + p.prediction.slice(1)}
-                </td>
-                <td>{bet.stake} points</td>
+          <table className="p-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Prediction</th>
+                <th className="r">Stake</th>
                 {settlement && (
                   <>
-                    <td>{refunded ? 'Refunded' : isCorrect ? 'Won' : 'Lost'}</td>
-                    {/* p.points already reflects any settlement — the scan
-                        above runs before this query, and there's no reason
-                        to re-query all of squad_members globally just to
-                        look the same value back up (that also used to be
-                        the source of the chat-impersonation bug below). */}
-                    <td>{p.points} pts</td>
+                    <th className="r">Outcome</th>
+                    <th className="r">Balance</th>
                   </>
                 )}
               </tr>
-            )
-          })}
-        </tbody>
-      </table>
+            </thead>
+            <tbody>
+              {participants.map((p) => {
+                const isCorrect = settlement ? p.prediction === settlement.outcome : false
+                const refunded = settlement?.outcome === 'refund'
+                const rowClass = !settlement ? '' : refunded ? 'refund-row' : isCorrect ? 'won-row' : 'lost-row'
+                return (
+                  <tr key={p.member_id} className={rowClass}>
+                    <td className="p-name">{p.name}</td>
+                    <td className="p-pick">{p.prediction[0].toUpperCase() + p.prediction.slice(1)}</td>
+                    <td className="p-stake r mono">{bet.stake} pts</td>
+                    {settlement && (
+                      <>
+                        <td className="p-out r">{refunded ? 'Refunded' : isCorrect ? 'Won' : 'Lost'}</td>
+                        {/* p.points already reflects any settlement — the scan
+                            above runs before this query, and there's no reason
+                            to re-query all of squad_members globally just to
+                            look the same value back up (that also used to be
+                            the source of the chat-impersonation bug below). */}
+                        <td className="p-bal r mono">{p.points} pts</td>
+                      </>
+                    )}
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
 
-      {status === 'open' && (
-        <JoinBetForm betId={bet.id} stake={bet.stake} homeTeam={bet.home_team} awayTeam={bet.away_team} />
-      )}
+          {!settlement && (
+            <div className="pot-total">
+              <span>Pot</span>
+              <span className="amount">{pot} pts</span>
+            </div>
+          )}
 
-      {/* S5: bet chat — user messages + auto-posted match events.
-          Scoped to this room's actual participants, not a global query —
-          see lib/participants.ts's isRoomParticipant for why that matters. */}
-      <BetChat betId={bet.id} members={participants.map(({ member_id, name }) => ({ id: member_id, name }))} />
+          {status === 'open' && !pending && (
+            <JoinBetForm betId={bet.id} stake={bet.stake} homeTeam={bet.home_team} awayTeam={bet.away_team} />
+          )}
 
-      <p>
-        <Link href="/bets/new">Open a bet →</Link>
+          {status === 'locked' && !settlement && !pending && (
+            <p className="locked-note">Joining closes at kickoff — no new picks now</p>
+          )}
+
+          {/* S5: bet chat — user messages + auto-posted match events.
+              Scoped to this room's actual participants, not a global query —
+              see lib/participants.ts's isRoomParticipant for why that matters. */}
+          <BetChat betId={bet.id} members={participants.map(({ member_id, name }) => ({ id: member_id, name }))} />
+        </div>
+      </div>
+
+      <p style={{ marginTop: 24 }}>
+        <Link href="/bets/new" className="mono" style={{ fontSize: '0.72rem', letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+          Open a bet →
+        </Link>
       </p>
     </main>
   )

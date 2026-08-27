@@ -61,49 +61,48 @@ export default function JoinBetForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} style={{ border: '1px solid #ccc', padding: '1rem', marginTop: '1rem' }}>
-      <h2>Join this room</h2>
-      <p>Stake is fixed at {stake} points to match the opener.</p>
+    <div className="join-box">
+      <p className="join-title mono">Join this bet</p>
+      <p className="join-sub">No account needed — type a name your friends will recognise.</p>
 
-      <label>
-        Your name
-        <input
-          type="text"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="e.g. Zara"
-          maxLength={60}
-          required
-        />
-      </label>
+      <form onSubmit={handleSubmit}>
+        <div className="field-row">
+          <span className="field-label">Your name</span>
+          <input
+            type="text"
+            className="text-input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Zara"
+            maxLength={60}
+            required
+          />
+        </div>
 
-      <fieldset>
-        <legend>Your prediction</legend>
-        {(['win', 'lose', 'draw'] as const).map((p) => (
-          <label key={p} style={{ marginRight: '1rem' }}>
-            <input
-              type="radio"
-              name="join-prediction"
-              value={p}
-              checked={prediction === p}
-              onChange={() => setPrediction(p)}
-              required
-            />
-            {' '}
-            {predictionLabel(p)}
-          </label>
-        ))}
-      </fieldset>
+        <div className="field-stack">
+          <span className="field-label">Your prediction</span>
+          <div className="pick-toggle">
+            {(['win', 'lose', 'draw'] as const).map((p) => (
+              <button
+                key={p}
+                type="button"
+                className={`pick-option${prediction === p ? ' selected' : ''}`}
+                aria-pressed={prediction === p}
+                onClick={() => setPrediction(p)}
+              >
+                {predictionLabel(p)}
+              </button>
+            ))}
+          </div>
+          <p className="field-hint">Stake is fixed at {stake} pts, set by the opener</p>
+        </div>
 
-      {error && (
-        <p role="alert" style={{ color: 'red' }}>
-          {error}
-        </p>
-      )}
+        {error && <p className="error-text" role="alert">{error}</p>}
 
-      <button type="submit" disabled={submitting}>
-        {submitting ? 'Joining…' : 'Join room'}
-      </button>
-    </form>
+        <button type="submit" className="stamp-button" disabled={submitting}>
+          {submitting ? 'Joining…' : `Join for ${stake} pts`}
+        </button>
+      </form>
+    </div>
   )
 }
