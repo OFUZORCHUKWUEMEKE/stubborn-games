@@ -1,7 +1,11 @@
 import Database from 'better-sqlite3'
 import path from 'path'
 
-const DB_PATH = path.join(process.cwd(), 'squad-picks.db')
+// Local dev: a file next to the app, as before. Production (Railway): must
+// point at a mounted persistent volume (e.g. DB_PATH=/data/squad-picks.db)
+// — the container's own filesystem is ephemeral and is wiped on every
+// redeploy/restart, silently losing every room ever created otherwise.
+const DB_PATH = process.env.DB_PATH ?? path.join(process.cwd(), 'squad-picks.db')
 
 let db: Database.Database | null = null
 
