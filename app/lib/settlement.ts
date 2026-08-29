@@ -1,7 +1,7 @@
 import type Database from 'better-sqlite3'
 import { getDb } from '@/lib/db'
 import { fetchMatchLive } from '@/lib/livescore'
-import { confirmWithSecondSource } from '@/lib/second-source'
+import { confirmWithSecondSource, type SecondSourceResult } from '@/lib/second-source'
 
 /**
  * S6 settlement engine.
@@ -139,6 +139,29 @@ export function refundBet(betId: number, reason: string, db: Database.Database =
   }
 }
 
+export type SettlementDecision = { action: 'settle' } | { action: 'hold'; reason: string }
+
+/**
+ * What to do with a second-source confirmation result, once we have one.
+ *
+ * 'unavailable' and 'disagree' are not the same risk and must not be
+ * treated the same: 'unavailable' means there's no second opinion to check
+ * against at all (right now — no API-Football credentials configured — this
+ * is the *only* state that ever actually occurs, so treating it the same as
+ * a genuine conflict meant nothing ever settled, for any bet, ever).
+ * 'disagree' means there IS a second opinion, and it says something's
+ * wrong — that's real, held-back evidence, and still blocks payout.
+ */
+export function decideSettlement(confirmation: SecondSourceResult): SettlementDecision {
+  if (confirmation.state === 'disagree') {
+    return {
+      action: 'hold',
+      reason: `sources disagree: primary says ${confirmation.primaryOutcome}, second source says ${confirmation.secondaryOutcome}`,
+    }
+  }
+  return { action: 'settle' }
+}
+
 /**
  * Scan: find locked (kickoff passed, not yet settled) bets whose matches are
  * finished per the live source, and settle each. Returns what it settled.
@@ -170,7 +193,9 @@ export async function settlePendingBets(): Promise<{ settled: SettleResult[]; he
       continue // still in progress, or data unavailable — try again next scan
     }
 
-    // S9: second-source confirmation before paying out.
+    // S9: second-source confirmation before paying out, where one is
+    // available. See decideSettlement's own comment for why 'unavailable'
+    // and 'disagree' get different treatment.
     const primaryOutcome = outcomeOf(live.homeScore, live.awayScore)
     const confirmation = await confirmWithSecondSource(
       c.eid,
@@ -179,10 +204,9 @@ export async function settlePendingBets(): Promise<{ settled: SettleResult[]; he
       live.homeScore,
       live.awayScore
     )
-    if (confirmation.state !== 'agree') {
-      holdBet(c.id, confirmation.state === 'disagree'
-        ? `sources disagree: primary says ${confirmation.primaryOutcome}, second source says ${confirmation.secondaryOutcome}`
-        : `second source unavailable (${confirmation.reason})`)
+    const decision = decideSettlement(confirmation)
+    if (decision.action === 'hold') {
+      holdBet(c.id, decision.reason)
       held.push(c.id)
       continue // no payout — bet held for review
     }

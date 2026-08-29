@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import Database from 'better-sqlite3'
 import { migrate } from '@/lib/db'
-import { settleBet, refundBet } from '@/lib/settlement'
+import { settleBet, refundBet, decideSettlement } from '@/lib/settlement'
+import type { SecondSourceResult } from '@/lib/second-source'
 
 function freshDb(): Database.Database {
   const db = new Database(':memory:')
@@ -107,6 +108,34 @@ describe('settleBet', () => {
       .run()
     // No bet_participants row inserted for this bet.
     expect(() => settleBet(betResult.lastInsertRowid as number, { homeScore: 1, awayScore: 0 }, db)).toThrow()
+  })
+})
+
+describe('decideSettlement', () => {
+  it('settles when the second source agrees', () => {
+    const confirmation: SecondSourceResult = { state: 'agree', outcome: 'win', homeScore: 2, awayScore: 1 }
+    expect(decideSettlement(confirmation)).toEqual({ action: 'settle' })
+  })
+
+  it('settles on the primary alone when no second source is available — the whole point of this change', () => {
+    // Right now this is the *only* case that actually occurs in this app:
+    // no API-Football credentials are configured yet, so every match hits
+    // this branch. Before this fix, 'unavailable' held forever (same as
+    // 'disagree'), which meant nothing ever settled, ever. "No second
+    // opinion" and "second opinion says something's wrong" are different
+    // risk levels and should not be treated the same.
+    const confirmation: SecondSourceResult = { state: 'unavailable', reason: 'no fixture mapping to second source' }
+    expect(decideSettlement(confirmation)).toEqual({ action: 'settle' })
+  })
+
+  it('still holds on a genuine disagreement between sources', () => {
+    const confirmation: SecondSourceResult = { state: 'disagree', primaryOutcome: 'win', secondaryOutcome: 'draw' }
+    const result = decideSettlement(confirmation)
+    expect(result.action).toBe('hold')
+    if (result.action === 'hold') {
+      expect(result.reason).toContain('win')
+      expect(result.reason).toContain('draw')
+    }
   })
 })
 
