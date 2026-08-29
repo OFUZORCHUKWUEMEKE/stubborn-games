@@ -1,0 +1,12 @@
+.git
+.claude
+issues
+issues-v2-rooms
+node_modules
+app/node_modules
+.next
+app/.next
+*.db
+*.db-*
+app/*.db
+app/*.db-*
