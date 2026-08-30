@@ -11,12 +11,12 @@ describe('seed', () => {
     expect(count).toBe(0)
   })
 
-  it('still seeds the demo match fixtures — unaffected by the roster removal', () => {
+  it('does not seed fake matches — real fixtures come from lib/fixtures.ts syncFixtures()', () => {
     const db = new Database(':memory:')
     migrate(db)
     seed(db)
     const count = (db.prepare('SELECT COUNT(*) AS n FROM matches').get() as { n: number }).n
-    expect(count).toBeGreaterThan(0)
+    expect(count).toBe(0)
   })
 })
 

@@ -4,7 +4,7 @@
     {
       "name": "app",
       "runtimeExecutable": "bash",
-      "runtimeArgs": ["-c", "cd app && pnpm dev"],
+      "runtimeArgs": ["-c", "cd app && LIVESCORE_CLI_PATH=./bin/livescore-pp-cli pnpm dev"],
       "port": 3000
     }
   ]
