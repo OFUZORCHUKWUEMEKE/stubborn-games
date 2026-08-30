@@ -109,6 +109,11 @@ export function migrate(db: Database.Database) {
       ALTER TABLE squad_members_new RENAME TO squad_members;
     `)
   }
+
+  // Real fixture sync (lib/fixtures.ts) upserts by eid via ON CONFLICT, which
+  // needs a unique index to target. SQLite unique indexes allow multiple
+  // NULLs, so this is safe alongside older rows seeded without an eid.
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_matches_eid ON matches(eid)')
 }
 
 function squadMembersNameIsUnique(db: Database.Database): boolean {
@@ -125,21 +130,12 @@ function squadMembersNameIsUnique(db: Database.Database): boolean {
 // entirely by rooms themselves (createBet/joinRoom each create their own
 // ad-hoc row per typed name). The table stays; only the hardcoded 5-person
 // seed data goes, since identity no longer exists before a room does.
-export function seed(db: Database.Database) {
-  const matchCount = (db.prepare('SELECT COUNT(*) AS n FROM matches').get() as { n: number }).n
-  if (matchCount === 0) {
-    // Seeded fixtures carrying real livescore eids (from a `livescore-pp-cli sync`
-    // of the current slate) so the bet page can look up live status/score.
-    const insertMatch = db.prepare('INSERT INTO matches (home_team, away_team, kickoff_at, eid) VALUES (?, ?, ?, ?)')
-    // Relative to "now" rather than a fixed date — a hardcoded absolute
-    // kickoff goes stale (and locks/finishes) within a day of being seeded.
-    const days = (n: number) => new Date(Date.now() + n * 24 * 60 * 60 * 1000).toISOString()
-    // eid values: real upcoming Premier League / big-club fixtures where available;
-    // null for placeholder rows, which the live panel reports as "no external id".
-    insertMatch.run('Brighton', 'Aston Villa', days(1), '1793529')
-    insertMatch.run('Manchester City', 'AFC Bournemouth', days(1), '1793531')
-    insertMatch.run('Newcastle United', 'Liverpool', days(2), '1793532')
-    insertMatch.run('West Bromwich Albion', 'Burnley', days(3), '1802348')
-    insertMatch.run('Barcelona', 'Real Madrid', days(4), null)
-  }
-}
+//
+// matches used to get 5 hardcoded team pairs here too, with a kickoff time
+// computed as "N days from whenever this db was seeded" — real teams, but
+// a fake date with no relationship to when that match was actually being
+// played. Real fixtures now come from lib/fixtures.ts's syncFixtures(),
+// triggered opportunistically from the new-bet page. Nothing to seed here
+// for matches anymore; an empty table just means the picker is waiting on
+// its first sync.
+export function seed(db: Database.Database) {}
