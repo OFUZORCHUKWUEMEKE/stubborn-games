@@ -167,8 +167,18 @@ export function decideSettlement(confirmation: SecondSourceResult): SettlementDe
  * finished per the live source, and settle each. Returns what it settled.
  * Bets already refunded (S8) are excluded by the settlements NOT EXISTS guard
  * and the status filter — the two end states are mutually exclusive (AC3).
+ *
+ * Pass `betId` to scope the scan to a single bet. The room page does this —
+ * viewing/joining a room should only ever pay the cost of checking *that*
+ * room's match, not sequentially awaiting a live-score call (plus a
+ * second-source call) for every open bet in the whole app. Without scoping,
+ * every page view got slower as more bets piled up system-wide, which is
+ * what made joining feel slow: the join form calls router.refresh() right
+ * after posting, which re-runs this scan on the room page.
  */
-export async function settlePendingBets(): Promise<{ settled: SettleResult[]; held: number[] }> {
+export async function settlePendingBets(
+  betId?: number
+): Promise<{ settled: SettleResult[]; held: number[] }> {
   const db = getDb()
   const now = new Date().toISOString()
 
@@ -180,10 +190,11 @@ export async function settlePendingBets(): Promise<{ settled: SettleResult[]; he
        WHERE b.status = 'open'
          AND m.kickoff_at <= ?
          AND m.eid IS NOT NULL
+         AND (? IS NULL OR b.id = ?)
          AND NOT EXISTS (SELECT 1 FROM settlements s WHERE s.bet_id = b.id)
          AND NOT EXISTS (SELECT 1 FROM pending_confirmations p WHERE p.bet_id = b.id)`
     )
-    .all(now) as { id: number; stake: number; eid: string; home_team: string; api_fixture_id: number | null }[]
+    .all(now, betId ?? null, betId ?? null) as { id: number; stake: number; eid: string; home_team: string; api_fixture_id: number | null }[]
 
   const settled: SettleResult[] = []
   const held: number[] = []

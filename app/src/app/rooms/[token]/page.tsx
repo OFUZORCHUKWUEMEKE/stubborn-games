@@ -56,9 +56,12 @@ export default async function RoomPage({ params }: { params: Promise<{ token: st
 
   // S6: opportunistic settlement scan — viewing a room is enough to move a
   // finished match to its settled state. No admin step. Idempotent.
+  // Scoped to this bet only — an unscoped scan here meant every room view
+  // sequentially awaited a live-score call for every open bet system-wide,
+  // which is what made joining (router.refresh() right after) feel slow.
   try {
     const { settlePendingBets } = await import('@/lib/settlement')
-    await settlePendingBets()
+    await settlePendingBets(betId)
   } catch {
     // settlement must never take the page down
   }
